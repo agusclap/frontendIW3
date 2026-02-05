@@ -1,12 +1,30 @@
 <script setup>
 import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { login } from "@/services/auth";
 
+const router = useRouter();
 const username = ref("");
 const password = ref("");
+const loading = ref(false);
+const error = ref("");
 
-const onSubmit = () => {
-  console.log(username.value, password.value);
-  // después lo conectamos al backend
+const onSubmit = async () => {
+  error.value = "";
+  if (!username.value || !password.value) {
+    error.value = "Usuario y contraseña son obligatorios";
+    return;
+  }
+  loading.value = true;
+  try {
+    await login(username.value, password.value);
+    router.push("/");
+  } catch (err) {
+    const msg = err.response?.data?.message ?? err.response?.data ?? err.message ?? "Error al iniciar sesión";
+    error.value = typeof msg === "string" ? msg : JSON.stringify(msg);
+  } finally {
+    loading.value = false;
+  }
 };
 </script>
 
@@ -30,6 +48,9 @@ const onSubmit = () => {
         </h2>
 
         <form @submit.prevent="onSubmit" class="space-y-4">
+          <p v-if="error" class="text-sm text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
+            {{ error }}
+          </p>
           <div>
             <label class="text-sm text-gray-300">Usuario</label>
             <input
@@ -53,10 +74,11 @@ const onSubmit = () => {
 
           <button
             type="submit"
+            :disabled="loading"
             class="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white shadow-lg shadow-blue-600/30
-                   hover:bg-blue-500 active:scale-[0.98] transition"
+                   hover:bg-blue-500 active:scale-[0.98] transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Entrar
+            {{ loading ? "Entrando…" : "Entrar" }}
           </button>
         </form>
 
