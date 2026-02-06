@@ -1,13 +1,77 @@
 <script setup>
+import { ref, onMounted, computed } from "vue";
 import AppLayout from "../layouts/AppLayout.vue";
+import { ProductsService } from "../services/products";
+import { OrdersService } from "../services/orders";
 
-const cards = [
-  { title: "Productos", value: "128", subtitle: "Total cargados", icon: "📦" },
-  { title: "Órdenes", value: "14", subtitle: "Pendientes", icon: "🧾" },
-  { title: "Usuarios", value: "6", subtitle: "Activos", icon: "👤" },
-  { title: "Stock crítico", value: "3", subtitle: "Revisar hoy", icon: "⚠️" },
-];
+const loading = ref(true);
+const error = ref("");
+
+const products = ref([]);
+const orders = ref([]);
+
+const load = async () => {
+  loading.value = true;
+  error.value = "";
+
+  try {
+    products.value = await ProductsService.list();
+    orders.value = await OrdersService.list();
+  } catch (e) {
+    error.value = "Error cargando dashboard";
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(load);
+
+const totalProducts = computed(() => products.value.length);
+
+const totalOrders = computed(() => orders.value.length);
+
+const pendingOrders = computed(() =>
+  orders.value.filter(
+    (o) =>
+      o.estado_orden !== "FINALIZADA"
+  ).length
+);
+
+const finishedOrders = computed(() =>
+  orders.value.filter(
+    (o) =>
+      o.estado_orden === "FINALIZADA"
+  ).length
+);
+
+const cards = computed(() => [
+  {
+    title: "Productos",
+    value: totalProducts.value,
+    subtitle: "Total cargados",
+    icon: "📦",
+  },
+  {
+    title: "Órdenes",
+    value: totalOrders.value,
+    subtitle: "Registradas",
+    icon: "🧾",
+  },
+  {
+    title: "Pendientes",
+    value: pendingOrders.value,
+    subtitle: "En proceso",
+    icon: "⏳",
+  },
+  {
+    title: "Finalizadas",
+    value: finishedOrders.value,
+    subtitle: "Completadas",
+    icon: "✅",
+  },
+]);
 </script>
+
 
 <template>
   <AppLayout>
