@@ -2,6 +2,18 @@
 import { computed, onMounted, ref } from "vue";
 import AppLayout from "../layouts/AppLayout.vue";
 import { OrdersService } from "../services/orders";
+import {
+  getClienteNombre,
+  getEstadoOrden,
+  getMasa,
+  getNumeroOrden,
+  getPatente,
+  getPreset,
+  getTemperatura,
+  getDensidad,
+  getCaudal,
+  isAlarmaActivada,
+} from "../utils/ordenContract";
 import { statusMeta } from "../utils/orderStatus";
 
 const loading = ref(true);
@@ -25,142 +37,142 @@ const load = async () => {
 onMounted(load);
 
 const statuses = computed(() => {
-  const set = new Set((orders.value || []).map(o => (o.status || "").toUpperCase()).filter(Boolean));
+  const set = new Set(
+    (orders.value || [])
+      .map((o) => (getEstadoOrden(o) ?? "").toString().toUpperCase().trim())
+      .filter(Boolean)
+  );
   return ["ALL", ...Array.from(set)];
 });
 
 const filtered = computed(() => {
   const qq = q.value.trim().toLowerCase();
   return (orders.value || []).filter((o) => {
-    const s = (o.status || "").toUpperCase();
+    const estado = getEstadoOrden(o);
+    const s = (estado ?? "").toString().toUpperCase().trim();
     const okStatus = statusFilter.value === "ALL" || s === statusFilter.value;
-    const hay = `${o.id ?? ""} ${o.number ?? ""} ${o.truck?.plate ?? ""} ${o.client?.name ?? ""}`.toLowerCase();
+    const hay = `${o.id ?? ""} ${getNumeroOrden(o)} ${getPatente(o)} ${getClienteNombre(o)}`.toLowerCase();
     const okQ = !qq || hay.includes(qq);
     return okStatus && okQ;
   });
 });
 
-// Helpers UI (por si tu dto trae datos de monitoreo)
 const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleString());
 </script>
 
 <template>
   <AppLayout>
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-2xl font-bold">Órdenes</h1>
-        <p class="text-gray-400 mt-1">Monitoreo y estado de carga</p>
-      </div>
+    <div class="min-h-screen bg-gray-950 text-gray-100">
+      <div class="mx-4 py-6">
+        <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 class="text-2xl font-bold tracking-tight text-white">Órdenes</h1>
+            <p class="mt-1 text-sm text-gray-400">Monitoreo y estado de carga</p>
+          </div>
 
-      <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
-        <select
-          v-model="statusFilter"
-          class="rounded-xl bg-black/30 border border-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <select
+              v-model="statusFilter"
+              class="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            >
+              <option value="ALL">Todos los estados</option>
+              <option v-for="s in statuses.filter((x) => x !== 'ALL')" :key="s" :value="s">
+                {{ statusMeta(s).label }}
+              </option>
+            </select>
+
+            <input
+              v-model="q"
+              placeholder="Buscar (nº orden, patente, cliente...)"
+              class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 sm:w-72"
+            />
+
+            <button
+              class="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+              @click="load"
+            >
+              Actualizar
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="error"
+          class="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
         >
-          <option v-for="s in statuses" :key="s" :value="s">
-            {{ s === "ALL" ? "Todos los estados" : s }}
-          </option>
-        </select>
+          {{ error }}
+        </div>
 
-        <input
-          v-model="q"
-          placeholder="Buscar (id, patente, cliente...)"
-          class="w-full sm:w-72 rounded-xl bg-black/30 border border-white/10 px-4 py-2 text-white placeholder:text-gray-500
-                 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-        />
+        <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm">
+          <div v-if="loading" class="p-8 text-center text-gray-400">Cargando órdenes...</div>
 
-        <button
-          class="rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 font-semibold transition"
-          @click="load"
-        >
-          ↻ Actualizar
-        </button>
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="border-b border-white/10 bg-black/30 text-gray-400">
+                <tr>
+                  <th class="px-5 py-4 text-left font-medium">Orden</th>
+                  <th class="px-5 py-4 text-left font-medium">Estado</th>
+                  <th class="px-5 py-4 text-left font-medium">Camión</th>
+                  <th class="px-5 py-4 text-left font-medium">Preset</th>
+                  <th class="px-5 py-4 text-left font-medium">Masa</th>
+                  <th class="px-5 py-4 text-left font-medium">Temp</th>
+                  <th class="px-5 py-4 text-left font-medium">Dens.</th>
+                  <th class="px-5 py-4 text-left font-medium">Caudal</th>
+                  <th class="px-5 py-4 text-right font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="o in filtered"
+                  :key="o.id"
+                  class="border-t border-white/10 transition hover:bg-white/5"
+                >
+                  <td class="px-5 py-4">
+                    <div class="font-medium text-white">#{{ getNumeroOrden(o) }}</div>
+                    <div class="text-xs text-gray-500">ID: {{ o.id }}</div>
+                  </td>
+
+                  <td class="px-5 py-4">
+                    <span
+                      class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs"
+                      :class="statusMeta(getEstadoOrden(o)).cls"
+                    >
+                      <span
+                        v-if="isAlarmaActivada(o)"
+                        class="h-1.5 w-1.5 rounded-full bg-red-400"
+                        title="Alarma activada"
+                      />
+                      {{ statusMeta(getEstadoOrden(o)).label }}
+                    </span>
+                  </td>
+
+                  <td class="px-5 py-4 text-gray-300">{{ getPatente(o) ?? "—" }}</td>
+                  <td class="px-5 py-4 text-gray-300">{{ fmt(getPreset(o)) }}</td>
+                  <td class="px-5 py-4 text-gray-300">{{ fmt(getMasa(o)) }}</td>
+                  <td class="px-5 py-4 text-gray-300">{{ fmt(getTemperatura(o)) }}</td>
+                  <td class="px-5 py-4 text-gray-300">{{ fmt(getDensidad(o)) }}</td>
+                  <td class="px-5 py-4 text-gray-300">{{ fmt(getCaudal(o)) }}</td>
+
+                  <td class="px-5 py-4 text-right">
+                    <router-link
+                      :to="`/orders/${getNumeroOrden(o)}`"
+                      class="font-medium text-blue-300 hover:text-blue-200"
+                    >
+                      Ver detalle
+                    </router-link>
+                  </td>
+                </tr>
+
+                <tr v-if="filtered.length === 0">
+                  <td colspan="9" class="px-5 py-12 text-center text-gray-500">
+                    No hay órdenes con esos filtros.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </div>
-
-    <div v-if="error" class="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
-      {{ error }}
-    </div>
-
-    <div class="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-      <div v-if="loading" class="p-6 text-gray-300">Cargando...</div>
-
-      <table v-else class="w-full text-sm">
-        <thead class="bg-black/30 text-gray-300">
-          <tr>
-            <th class="text-left px-5 py-4">Orden</th>
-            <th class="text-left px-5 py-4">Estado</th>
-            <th class="text-left px-5 py-4">Camión</th>
-            <th class="text-left px-5 py-4">Preset</th>
-            <th class="text-left px-5 py-4">Masa</th>
-            <th class="text-left px-5 py-4">Temp</th>
-            <th class="text-left px-5 py-4">Dens.</th>
-            <th class="text-left px-5 py-4">Caudal</th>
-            <th class="text-right px-5 py-4">Acciones</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          <tr
-            v-for="o in filtered"
-            :key="o.id"
-            class="border-t border-white/10 hover:bg-white/5 transition"
-          >
-            <td class="px-5 py-4 font-medium">
-              <div class="text-white">#{{ o.number ?? o.id }}</div>
-              <div class="text-xs text-gray-400">ID: {{ o.id }}</div>
-            </td>
-
-            <td class="px-5 py-4">
-              <span
-                class="px-2 py-1 rounded-lg text-xs border"
-                :class="statusMeta(o.status).cls"
-              >
-                {{ statusMeta(o.status).label }}
-              </span>
-            </td>
-
-            <td class="px-5 py-4 text-gray-200">
-              {{ o.truck?.plate ?? "—" }}
-            </td>
-
-            <td class="px-5 py-4 text-gray-200">
-              {{ fmt(o.presetKg ?? o.preset ?? o.monitor?.presetKg) }}
-            </td>
-
-            <td class="px-5 py-4 text-gray-200">
-              {{ fmt(o.massKg ?? o.monitor?.massKg) }}
-            </td>
-
-            <td class="px-5 py-4 text-gray-200">
-              {{ fmt(o.temperature ?? o.monitor?.temperature) }}
-            </td>
-
-            <td class="px-5 py-4 text-gray-200">
-              {{ fmt(o.density ?? o.monitor?.density) }}
-            </td>
-
-            <td class="px-5 py-4 text-gray-200">
-              {{ fmt(o.flowKgh ?? o.monitor?.flowKgh) }}
-            </td>
-
-            <td class="px-5 py-4 text-right">
-              <router-link
-                :to="`/orders/${o.id}`"
-                class="text-blue-300 hover:text-blue-200 font-semibold"
-              >
-                Ver
-              </router-link>
-            </td>
-          </tr>
-
-          <tr v-if="filtered.length === 0">
-            <td colspan="9" class="px-5 py-10 text-center text-gray-400">
-              No hay órdenes con esos filtros.
-            </td>
-          </tr>
-        </tbody>
-      </table>
     </div>
   </AppLayout>
 </template>
