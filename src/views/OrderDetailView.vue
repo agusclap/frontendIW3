@@ -139,7 +139,7 @@ const load = async () => {
   } catch (e) {
     if (e?.response?.status === 403) {
       error.value =
-        "Acceso denegado (403). El servidor no permite ver el detalle de esta orden. Revisa en el backend que GET /api/v1/orden/{id} esté permitido para tu rol.";
+        "Acceso denegado (403). El servidor no permite ver el detalle de esta orden. Revisa en el backend que GET /api/v1/orden/by-number/{numeroOrden} esté permitido para tu rol.";
     } else {
       error.value = e?.message || "Error cargando la orden";
     }

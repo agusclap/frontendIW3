@@ -2,9 +2,7 @@ import { api } from "./api";
 
 export const OrdersService = {
   list: async () => (await api.get("/orden")).data,
-  /** Detalle por ID (requiere endpoint GET /orden/{id} en el backend) */
-  getById: async (id) => (await api.get(`/orden/${id}`)).data,
-  /** Detalle por número de orden (usa GET /orden/by-number/{numeroOrden} que ya existe en el backend) */
+  /** Detalle por número de orden. El backend solo expone GET /orden/by-number/{numeroOrden} (no GET /orden/{id}). */
   getByNumeroOrden: async (numeroOrden) =>
     (await api.get(`/orden/by-number/${numeroOrden}`)).data,
 
