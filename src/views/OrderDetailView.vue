@@ -16,7 +16,7 @@ import AppLayout from "../layouts/AppLayout.vue";
 import { OrdersService } from "../services/orders";
 
 import { AlarmsService } from "../services/alarms";
-import { createTemperaturasSubscription } from "../services/websocket";
+import { createCargaSubscription } from "../services/websocket";
 import {
   getClienteNombre,
   getEstadoOrden,
@@ -61,9 +61,16 @@ const temperature = ref(null);
 const flowKgh = ref(0);
 const density = ref(null);
 
-const TEMP_HISTORY_MAX = 30;
+const HISTORY_MAX = 30;
 const temperatureHistory = ref([]);
 const temperatureLabels = ref([]);
+const densityHistory = ref([]);
+const densityLabels = ref([]);
+const flowHistory = ref([]);
+const flowLabels = ref([]);
+
+/** Historial completo de carga (del API) para órdenes finalizadas; usado para la tabla de detalles. */
+const historialCarga = ref([]);
 
 const isCargaTerminada = computed(() => {
   const estado = (getEstadoOrden(order.value) ?? "").toString().toUpperCase().trim();
@@ -81,32 +88,41 @@ function applyOrderToState(data) {
   temperature.value = getTemperatura(data);
   flowKgh.value = getCaudal(data);
   density.value = getDensidad(data);
-  if (temperature.value != null) {
-    const terminada = isCargaTerminada.value;
-    if (!terminada || temperatureHistory.value.length === 0) {
-      appendTemperatureSample(new Date().toLocaleTimeString(), temperature.value);
-    }
+  const t = new Date().toLocaleTimeString();
+  const terminada = isCargaTerminada.value;
+  if (!terminada) {
+    // Carga en curso: cada poll añade una fila con temp, densidad y caudal (mismo label) para que la tabla no crezca solo por temperatura.
+    if (temperature.value != null) appendTemperatureSample(t, temperature.value);
+    if (density.value != null) appendDensitySample(t, density.value);
+    if (flowKgh.value != null) appendFlowSample(t, flowKgh.value);
+  } else {
+    // Orden finalizada: solo rellenar si los historiales están vacíos (el historial completo viene de getHistorialCarga).
+    if (temperature.value != null && temperatureHistory.value.length === 0) appendTemperatureSample(t, temperature.value);
+    if (density.value != null && densityHistory.value.length === 0) appendDensitySample(t, density.value);
+    if (flowKgh.value != null && flowHistory.value.length === 0) appendFlowSample(t, flowKgh.value);
   }
 }
 
-function buildChartFromHistorial(items) {
+/** Construye { labels, values } desde historial para un campo numérico (temperatura, densidad, caudal). */
+function buildChartFromHistorial(items, fieldKey) {
   if (!Array.isArray(items) || items.length === 0) return null;
+  const key = fieldKey === "temperatura" ? "temperatura" : fieldKey === "densidad" ? "densidad" : "caudal";
   const withTime = items
     .map((item) => {
-      const temp = item.temperatura ?? item.temp;
-      if (temp == null || Number.isNaN(Number(temp))) return null;
+      const raw = item[key] ?? item[key === "temperatura" ? "temp" : key];
+      if (raw == null || Number.isNaN(Number(raw))) return null;
       let ms = null;
       if (item.fechaHora) ms = new Date(item.fechaHora).getTime();
       else if (item.timestamp != null) ms = item.timestamp > 1e12 ? item.timestamp : item.timestamp * 1000;
       else if (item.fecha) ms = new Date(item.fecha).getTime();
-      return { ms: ms ?? 0, temp: Number(temp) };
+      return { ms: ms ?? 0, value: Number(raw) };
     })
     .filter(Boolean);
   if (withTime.length === 0) return null;
   withTime.sort((a, b) => a.ms - b.ms);
   return {
     labels: withTime.map((x) => (x.ms ? new Date(x.ms).toLocaleTimeString() : "")),
-    values: withTime.map((x) => x.temp),
+    values: withTime.map((x) => x.value),
   };
 }
 
@@ -134,11 +150,24 @@ const load = async () => {
     const terminada = isCargaTerminada.value;
     if (terminada) {
       const historial = await OrdersService.getHistorialCarga(numeroOrden);
-      const chart = buildChartFromHistorial(historial);
-      if (chart && chart.values.length > 0) {
-        temperatureLabels.value = chart.labels;
-        temperatureHistory.value = chart.values;
+      historialCarga.value = Array.isArray(historial) ? historial : [];
+      const chartTemp = buildChartFromHistorial(historial, "temperatura");
+      if (chartTemp?.values?.length) {
+        temperatureLabels.value = chartTemp.labels;
+        temperatureHistory.value = chartTemp.values;
       }
+      const chartDens = buildChartFromHistorial(historial, "densidad");
+      if (chartDens?.values?.length) {
+        densityLabels.value = chartDens.labels;
+        densityHistory.value = chartDens.values;
+      }
+      const chartCaudal = buildChartFromHistorial(historial, "caudal");
+      if (chartCaudal?.values?.length) {
+        flowLabels.value = chartCaudal.labels;
+        flowHistory.value = chartCaudal.values;
+      }
+    } else {
+      historialCarga.value = [];
     }
   } catch (e) {
     if (e?.response?.status === 403) {
@@ -151,16 +180,25 @@ const load = async () => {
   }
 };
 
-function appendTemperatureSample(label, value) {
+function appendSample(labelsRef, valuesRef, label, value, maxPoints) {
   const v = Number(value);
   if (Number.isNaN(v)) return;
   if (isCargaTerminada.value) {
-    temperatureLabels.value = [...temperatureLabels.value, label];
-    temperatureHistory.value = [...temperatureHistory.value, v];
+    labelsRef.value = [...labelsRef.value, label];
+    valuesRef.value = [...valuesRef.value, v];
   } else {
-    temperatureLabels.value = [...temperatureLabels.value.slice(-(TEMP_HISTORY_MAX - 1)), label];
-    temperatureHistory.value = [...temperatureHistory.value.slice(-(TEMP_HISTORY_MAX - 1)), v];
+    labelsRef.value = [...labelsRef.value.slice(-(maxPoints - 1)), label];
+    valuesRef.value = [...valuesRef.value.slice(-(maxPoints - 1)), v];
   }
+}
+function appendTemperatureSample(label, value) {
+  appendSample(temperatureLabels, temperatureHistory, label, value, HISTORY_MAX);
+}
+function appendDensitySample(label, value) {
+  appendSample(densityLabels, densityHistory, label, value, HISTORY_MAX);
+}
+function appendFlowSample(label, value) {
+  appendSample(flowLabels, flowHistory, label, value, HISTORY_MAX);
 }
 
 onMounted(async () => {
@@ -170,13 +208,55 @@ onMounted(async () => {
   }, 5000);
 
   const token = localStorage.getItem("token");
-  unsubscribeWs = createTemperaturasSubscription({
+  // Timestamp compartido por "batch": los 3 mensajes (temp, densidad, caudal) que llegan juntos
+  // usan el mismo label para quedar en la misma fila de la tabla y alineados en los gráficos.
+  const BATCH_MS = 2000;
+  let batchLabel = "";
+  let batchTime = 0;
+  function getBatchLabel() {
+    const now = Date.now();
+    if (now - batchTime > BATCH_MS || !batchLabel) {
+      batchLabel = new Date().toLocaleTimeString();
+      batchTime = now;
+    }
+    return batchLabel;
+  }
+  const ingest = (loc, msg, data, hypothesisId) => {
+    const payload = { location: loc, message: msg, data: data ?? {}, timestamp: Date.now(), hypothesisId };
+    console.warn("[DEBUG-WS]", JSON.stringify(payload));
+    fetch('http://127.0.0.1:7246/ingest/e8eacad5-e1b3-4f2d-a3a7-5d2583984d88', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => {});
+  };
+  unsubscribeWs = createCargaSubscription({
     token: token || undefined,
     onTemperatura: (value) => {
       wsConnected.value = true;
       temperature.value = value;
-      appendTemperatureSample(new Date().toLocaleTimeString(), value);
+      appendTemperatureSample(getBatchLabel(), value);
     },
+    onDensidad: (value) => {
+      // #region agent log
+      ingest("OrderDetailView.vue:onDensidad", "callback onDensidad ejecutado", { value, type: typeof value }, "H3");
+      // #endregion
+      wsConnected.value = true;
+      density.value = value;
+      appendDensitySample(getBatchLabel(), value);
+      // #region agent log
+      ingest("OrderDetailView.vue:onDensidad", "después de append", { densityHistoryLen: densityHistory.value.length, densityLabelsLen: densityLabels.value.length }, "H5");
+      // #endregion
+    },
+    onCaudal: (value) => {
+      // #region agent log
+      ingest("OrderDetailView.vue:onCaudal", "callback onCaudal ejecutado", { value, type: typeof value }, "H3");
+      // #endregion
+      wsConnected.value = true;
+      flowKgh.value = value;
+      appendFlowSample(getBatchLabel(), value);
+      // #region agent log
+      ingest("OrderDetailView.vue:onCaudal", "después de append", { flowHistoryLen: flowHistory.value.length, flowLabelsLen: flowLabels.value.length }, "H5");
+      // #endregion
+    },
+    onConnect: () => { wsConnected.value = true; },
+    onDisconnect: () => { wsConnected.value = false; },
   });
 });
 
@@ -246,7 +326,7 @@ const etaCirclePercent = computed(() => {
   return Math.max(0, p);
 });
 
-const chartData = computed(() => ({
+const chartDataTemperatura = computed(() => ({
   labels: temperatureLabels.value,
   datasets: [
     {
@@ -259,6 +339,52 @@ const chartData = computed(() => ({
     },
   ],
 }));
+const chartDataDensidad = computed(() => ({
+  labels: densityLabels.value,
+  datasets: [
+    {
+      label: "Densidad",
+      data: densityHistory.value,
+      borderColor: "rgb(168, 85, 247)",
+      backgroundColor: "rgba(168, 85, 247, 0.1)",
+      fill: true,
+      tension: 0.3,
+    },
+  ],
+}));
+const chartDataCaudal = computed(() => ({
+  labels: flowLabels.value,
+  datasets: [
+    {
+      label: "Caudal (kg/h)",
+      data: flowHistory.value,
+      borderColor: "rgb(34, 197, 94)",
+      backgroundColor: "rgba(34, 197, 94, 0.1)",
+      fill: true,
+      tension: 0.3,
+    },
+  ],
+}));
+
+/** Filas para la tabla de detalles: historial del API (orden finalizada) o datos en vivo (carga en curso). */
+const detallesTableRows = computed(() => {
+  if (isCargaTerminada.value && historialCarga.value.length > 0) {
+    return [...historialCarga.value].sort((a, b) => {
+      const ta = a.fechaHora ? new Date(a.fechaHora).getTime() : 0;
+      const tb = b.fechaHora ? new Date(b.fechaHora).getTime() : 0;
+      return ta - tb;
+    });
+  }
+  const len = temperatureLabels.value.length;
+  if (len === 0) return [];
+  return Array.from({ length: len }, (_, i) => ({
+    fechaHora: temperatureLabels.value[i],
+    temperatura: temperatureHistory.value[i] ?? null,
+    densidad: densityHistory.value[i] ?? null,
+    caudal: flowHistory.value[i] ?? null,
+    masa: i === len - 1 ? massKg.value : null,
+  }));
+});
 
 const chartOptions = {
   responsive: true,
@@ -304,12 +430,6 @@ const fmt = (n, unit = "") =>
               </div>
             </div>
           </div>
-          <div class="text-[10px] bg-black p-2 rounded border border-white/20 font-mono text-gray-400">
-            DEBUG LOG:
-            Preset: {{ presetKg }} ({{ typeof presetKg }}) |
-            Masa: {{ massKg }} ({{ typeof massKg }}) |
-            Caudal: {{ flowKgh }} ({{ typeof flowKgh }})
-          </div>
           <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div class="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
               <p class="mb-4 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Progreso</p>
@@ -338,9 +458,72 @@ const fmt = (n, unit = "") =>
             </div>
           </div>
 
-          <div class="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
-            <div class="h-64">
-              <Line :data="chartData" :options="chartOptions" />
+          <div class="space-y-6">
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
+              <p class="mb-4 text-sm font-medium text-gray-300">
+                {{ isCargaTerminada ? "Temperatura durante la carga" : "Temperatura en tiempo real" }}
+              </p>
+              <div class="h-64">
+                <Line :data="chartDataTemperatura" :options="chartOptions" />
+              </div>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
+              <p class="mb-4 text-sm font-medium text-gray-300">
+                {{ isCargaTerminada ? "Densidad durante la carga" : "Densidad en tiempo real" }}
+              </p>
+              <div class="h-64">
+                <Line :data="chartDataDensidad" :options="chartOptions" />
+              </div>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
+              <p class="mb-4 text-sm font-medium text-gray-300">
+                {{ isCargaTerminada ? "Caudal durante la carga" : "Caudal en tiempo real (kg/h)" }}
+              </p>
+              <div class="h-64">
+                <Line :data="chartDataCaudal" :options="chartOptions" />
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm">
+            <div class="border-b border-white/10 px-5 py-4">
+              <h2 class="text-sm font-semibold text-gray-200">Detalles de carga</h2>
+              <p class="text-xs text-gray-500 mt-0.5">
+                {{ isCargaTerminada ? "Historial completo de la carga" : "Últimos datos en tiempo real" }}
+              </p>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-black/30 text-gray-400">
+                  <tr>
+                    <th class="px-5 py-3 text-left font-medium">Fecha / Hora</th>
+                    <th class="px-5 py-3 text-left font-medium">Temperatura (°C)</th>
+                    <th class="px-5 py-3 text-left font-medium">Densidad</th>
+                    <th class="px-5 py-3 text-left font-medium">Caudal (kg/h)</th>
+                    <th class="px-5 py-3 text-left font-medium">Masa (kg)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(row, idx) in detallesTableRows"
+                    :key="idx"
+                    class="border-t border-white/10 text-gray-300 hover:bg-white/5"
+                  >
+                    <td class="px-5 py-3 font-mono text-xs">
+                      {{ row.fechaHora ? (row.fechaHora.includes('T') ? new Date(row.fechaHora).toLocaleString() : row.fechaHora) : "—" }}
+                    </td>
+                    <td class="px-5 py-3">{{ fmt(row.temperatura, " °C") }}</td>
+                    <td class="px-5 py-3">{{ fmt(row.densidad) }}</td>
+                    <td class="px-5 py-3">{{ fmt(row.caudal, " kg/h") }}</td>
+                    <td class="px-5 py-3">{{ fmt(row.masa, " kg") }}</td>
+                  </tr>
+                  <tr v-if="detallesTableRows.length === 0">
+                    <td colspan="5" class="px-5 py-8 text-center text-gray-500">
+                      Aún no hay datos de carga. Los detalles aparecerán en tiempo real o al finalizar la orden.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
