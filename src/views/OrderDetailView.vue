@@ -12,6 +12,8 @@ import {
   PointElement,
   Tooltip,
 } from "chart.js";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import AppLayout from "../layouts/AppLayout.vue";
 import { OrdersService } from "../services/orders";
 
@@ -51,6 +53,8 @@ const loading = ref(true);
 const error = ref("");
 const order = ref(null);
 const wsConnected = ref(false);
+const downloadingConciliacion = ref(false);
+const downloadError = ref("");
 
 //  PASO 2 — Crear estado para alarmas
 const alarms = ref([]);
@@ -75,6 +79,10 @@ const historialCarga = ref([]);
 const isCargaTerminada = computed(() => {
   const estado = (getEstadoOrden(order.value) ?? "").toString().toUpperCase().trim();
   return estado === "FINALIZADA" || estado === "CERRADA_PARA_CARGA";
+});
+const isOrdenFinalizada = computed(() => {
+  const estado = (getEstadoOrden(order.value) ?? "").toString().toUpperCase().trim();
+  return estado === "FINALIZADA";
 });
 
 let unsubscribeWs = null;
@@ -177,6 +185,113 @@ const load = async () => {
     }
   } finally {
     loading.value = false;
+  }
+};
+
+const fmtPdf = (n, unit = "", maxDecimals = 2) => {
+  const v = Number(n);
+  if (n === null || n === undefined || Number.isNaN(v)) return "—";
+  const formatted = v.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDecimals,
+  });
+  return `${formatted}${unit}`;
+};
+
+const downloadConciliacion = async () => {
+  if (downloadingConciliacion.value) return;
+  if (!isOrdenFinalizada.value) {
+    downloadError.value = "La conciliacion se habilita cuando la orden está finalizada.";
+    return;
+  }
+  downloadError.value = "";
+  downloadingConciliacion.value = true;
+  try {
+    const num = getNumeroOrden(order.value) ?? numeroOrden;
+    if (!num) throw new Error("Número de orden inválido.");
+    const conciliacion = await OrdersService.getConciliacion(num);
+    if (!conciliacion) throw new Error("No se recibió la conciliación.");
+
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginX = 40;
+    const headerHeight = 72;
+
+    doc.setFillColor(17, 24, 39);
+    doc.rect(0, 0, pageWidth, headerHeight, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("Conciliacion de carga", marginX, 30);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Orden #${num}`, marginX, 50);
+    doc.setTextColor(31, 41, 55);
+
+    let y = headerHeight + 12;
+
+    const fechaPesaje = conciliacion.fechaPesajeFinal
+      ? new Date(conciliacion.fechaPesajeFinal).toLocaleString()
+      : "—";
+    const fechaGenerado = new Date().toLocaleString();
+
+    const infoRows = [
+      ["Orden", String(num)],
+      ["Cliente", getClienteNombre(order.value) ?? "—"],
+      ["Producto", getProductoNombre(order.value) ?? "—"],
+      ["Chofer", getChoferNombre(order.value) ?? "—"],
+      ["Camión", getPatente(order.value) ?? "—"],
+      ["Fecha pesaje final", fechaPesaje],
+      ["Generado", fechaGenerado],
+    ];
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Datos de la orden", ""]],
+      body: infoRows,
+      styles: { fontSize: 9, cellPadding: 5 },
+      headStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255] },
+      theme: "striped",
+      margin: { left: marginX, right: marginX },
+      columnStyles: {
+        0: { cellWidth: 180 },
+        1: { cellWidth: "auto" },
+      },
+    });
+
+    const startY = (doc.lastAutoTable?.finalY ?? y) + 14;
+    const dataRows = [
+      ["Tara", fmtPdf(conciliacion.tara, " kg")],
+      ["Peso final", fmtPdf(conciliacion.pesoFinal, " kg")],
+      ["Producto cargado", fmtPdf(conciliacion.productoCargado, " kg")],
+      ["Neto por balanza", fmtPdf(conciliacion.netoPorBalanza, " kg")],
+      ["Diferencia", fmtPdf(conciliacion.diferencia, " kg")],
+      ["Promedio temperatura", fmtPdf(conciliacion.promedioTemperatura, " °C", 1)],
+      ["Promedio densidad", fmtPdf(conciliacion.promedioDensidad, "", 3)],
+      ["Promedio caudal", fmtPdf(conciliacion.promedioCaudal, " kg/h")],
+    ];
+
+    autoTable(doc, {
+      startY,
+      head: [["Resumen de conciliacion", ""]],
+      body: dataRows,
+      styles: { fontSize: 9, cellPadding: 5 },
+      headStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255] },
+      theme: "striped",
+      margin: { left: marginX, right: marginX },
+      columnStyles: {
+        0: { cellWidth: 180 },
+        1: { cellWidth: "auto" },
+      },
+    });
+
+    doc.save(`conciliacion-orden-${num}.pdf`);
+  } catch (e) {
+    console.error("Error descargando conciliación", e);
+    downloadError.value = e?.message || "No se pudo descargar la conciliación.";
+  } finally {
+    downloadingConciliacion.value = false;
   }
 };
 
@@ -428,6 +543,20 @@ const fmt = (n, unit = "") =>
                   En vivo
                 </span>
               </div>
+            </div>
+            <div class="flex flex-col gap-2 md:items-end">
+              <button
+                type="button"
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="downloadingConciliacion || !isOrdenFinalizada"
+                @click="downloadConciliacion"
+              >
+                {{ downloadingConciliacion ? "Generando PDF..." : "Descargar conciliación" }}
+              </button>
+              <p v-if="downloadError" class="text-xs text-red-300">{{ downloadError }}</p>
+              <p v-else-if="!isOrdenFinalizada" class="text-xs text-gray-400">
+                Disponible cuando la orden esté finalizada.
+              </p>
             </div>
           </div>
           <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">

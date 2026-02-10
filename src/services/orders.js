@@ -24,4 +24,12 @@ export const OrdersService = {
       throw e;
     }
   },
+
+    // Dentro de OrdersService
+  async getConciliacion(numeroOrden) {
+    const { data } = await api.get(`/orden/conciliacion`, {
+      params: { numeroOrden }
+    });
+    return data;
+  },
 };
