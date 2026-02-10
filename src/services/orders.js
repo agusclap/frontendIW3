@@ -6,6 +6,10 @@ export const OrdersService = {
   getByNumeroOrden: async (numeroOrden) =>
     (await api.get(`/orden/by-number/${numeroOrden}`)).data,
 
+   async create(order) {
+    const { data } = await api.post("/orden/b2b", order);
+    return data;
+  },
   /**
    * Historial de datos de carga de la orden (cada envío POST /datos-carga).
    * Esperado: array de { fechaHora?, timestamp?, temperatura, masa?, densidad?, caudal? } ordenable por tiempo.

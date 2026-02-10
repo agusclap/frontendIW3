@@ -36,6 +36,44 @@ const load = async () => {
 
 onMounted(load);
 
+//
+// ⏱️ Tick para actualizar ETA cada segundo
+//
+const tick = ref(0);
+setInterval(() => {
+  tick.value++;
+}, 1000);
+
+//
+// 🔥 ETA industrial
+//
+const formatETA = (order) => {
+  tick.value; // fuerza reactividad
+
+  const estado = getEstadoOrden(order);
+
+  if (estado !== "CON_PESAJE_INICIAL") return "—";
+
+  const preset = getPreset(order);
+  const masa = getMasa(order);
+  const caudal = getCaudal(order);
+
+  if (!preset || !masa || !caudal || caudal <= 0) return "—";
+
+  const remaining = preset - masa;
+
+  if (remaining <= 0) return "0m";
+
+  const minutes = (remaining / caudal) * 60;
+
+  if (!isFinite(minutes)) return "—";
+
+  const m = Math.floor(minutes);
+  const s = Math.floor((minutes - m) * 60);
+
+  return `${m}m ${s}s`;
+};
+
 const statuses = computed(() => {
   const set = new Set(
     (orders.value || [])
@@ -51,13 +89,17 @@ const filtered = computed(() => {
     const estado = getEstadoOrden(o);
     const s = (estado ?? "").toString().toUpperCase().trim();
     const okStatus = statusFilter.value === "ALL" || s === statusFilter.value;
+
     const hay = `${o.id ?? ""} ${getNumeroOrden(o)} ${getPatente(o)} ${getClienteNombre(o)}`.toLowerCase();
+
     const okQ = !qq || hay.includes(qq);
+
     return okStatus && okQ;
   });
 });
 
-const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleString());
+const fmt = (n) =>
+  n === null || n === undefined ? "—" : Number(n).toLocaleString();
 </script>
 
 <template>
@@ -66,8 +108,12 @@ const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleSt
       <div class="mx-4 py-6">
         <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 class="text-2xl font-bold tracking-tight text-white">Órdenes</h1>
-            <p class="mt-1 text-sm text-gray-400">Monitoreo y estado de carga</p>
+            <h1 class="text-2xl font-bold tracking-tight text-white">
+              Órdenes
+            </h1>
+            <p class="mt-1 text-sm text-gray-400">
+              Monitoreo y estado de carga
+            </p>
           </div>
 
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -76,7 +122,11 @@ const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleSt
               class="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             >
               <option value="ALL">Todos los estados</option>
-              <option v-for="s in statuses.filter((x) => x !== 'ALL')" :key="s" :value="s">
+              <option
+                v-for="s in statuses.filter((x) => x !== 'ALL')"
+                :key="s"
+                :value="s"
+              >
                 {{ statusMeta(s).label }}
               </option>
             </select>
@@ -103,12 +153,18 @@ const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleSt
           {{ error }}
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm">
-          <div v-if="loading" class="p-8 text-center text-gray-400">Cargando órdenes...</div>
+        <div
+          class="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm"
+        >
+          <div v-if="loading" class="p-8 text-center text-gray-400">
+            Cargando órdenes...
+          </div>
 
           <div v-else class="overflow-x-auto">
             <table class="w-full text-sm">
-              <thead class="border-b border-white/10 bg-black/30 text-gray-400">
+              <thead
+                class="border-b border-white/10 bg-black/30 text-gray-400"
+              >
                 <tr>
                   <th class="px-5 py-4 text-left font-medium">Orden</th>
                   <th class="px-5 py-4 text-left font-medium">Estado</th>
@@ -118,9 +174,13 @@ const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleSt
                   <th class="px-5 py-4 text-left font-medium">Temp</th>
                   <th class="px-5 py-4 text-left font-medium">Dens.</th>
                   <th class="px-5 py-4 text-left font-medium">Caudal</th>
-                  <th class="px-5 py-4 text-right font-medium">Acciones</th>
+                  <th class="px-5 py-4 text-left font-medium">ETA</th>
+                  <th class="px-5 py-4 text-right font-medium">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
+
               <tbody>
                 <tr
                   v-for="o in filtered"
@@ -128,7 +188,9 @@ const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleSt
                   class="border-t border-white/10 transition hover:bg-white/5"
                 >
                   <td class="px-5 py-4">
-                    <div class="font-medium text-white">#{{ getNumeroOrden(o) }}</div>
+                    <div class="font-medium text-white">
+                      #{{ getNumeroOrden(o) }}
+                    </div>
                     <div class="text-xs text-gray-500">ID: {{ o.id }}</div>
                   </td>
 
@@ -140,18 +202,32 @@ const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleSt
                       <span
                         v-if="isAlarmaActivada(o)"
                         class="h-1.5 w-1.5 rounded-full bg-red-400"
-                        title="Alarma activada"
                       />
                       {{ statusMeta(getEstadoOrden(o)).label }}
                     </span>
                   </td>
 
-                  <td class="px-5 py-4 text-gray-300">{{ getPatente(o) ?? "—" }}</td>
-                  <td class="px-5 py-4 text-gray-300">{{ fmt(getPreset(o)) }}</td>
-                  <td class="px-5 py-4 text-gray-300">{{ fmt(getMasa(o)) }}</td>
-                  <td class="px-5 py-4 text-gray-300">{{ fmt(getTemperatura(o)) }}</td>
-                  <td class="px-5 py-4 text-gray-300">{{ fmt(getDensidad(o)) }}</td>
-                  <td class="px-5 py-4 text-gray-300">{{ fmt(getCaudal(o)) }}</td>
+                  <td class="px-5 py-4 text-gray-300">
+                    {{ getPatente(o) ?? "—" }}
+                  </td>
+                  <td class="px-5 py-4 text-gray-300">
+                    {{ fmt(getPreset(o)) }}
+                  </td>
+                  <td class="px-5 py-4 text-gray-300">
+                    {{ fmt(getMasa(o)) }}
+                  </td>
+                  <td class="px-5 py-4 text-gray-300">
+                    {{ fmt(getTemperatura(o)) }}
+                  </td>
+                  <td class="px-5 py-4 text-gray-300">
+                    {{ fmt(getDensidad(o)) }}
+                  </td>
+                  <td class="px-5 py-4 text-gray-300">
+                    {{ fmt(getCaudal(o)) }}
+                  </td>
+                  <td class="px-5 py-4 text-gray-300 font-mono">
+                    {{ formatETA(o) }}
+                  </td>
 
                   <td class="px-5 py-4 text-right">
                     <router-link
@@ -164,7 +240,7 @@ const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleSt
                 </tr>
 
                 <tr v-if="filtered.length === 0">
-                  <td colspan="9" class="px-5 py-12 text-center text-gray-500">
+                  <td colspan="10" class="px-5 py-12 text-center text-gray-500">
                     No hay órdenes con esos filtros.
                   </td>
                 </tr>
