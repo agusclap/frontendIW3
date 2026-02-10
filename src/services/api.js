@@ -4,7 +4,7 @@ import axios from "axios";
 const apiBaseUrl = import.meta.env.DEV 
   ? "/api/v1" 
   : (import.meta.env.VITE_API_BASE_URL ?? "/api/v1");
-
+  //: (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1");
 export const api = axios.create({
   baseURL: apiBaseUrl,
   timeout: 15000,

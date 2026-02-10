@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-
+import { logout as logoutService } from "../services/auth";
 const route = useRoute();
 const router = useRouter();
 
@@ -15,7 +15,7 @@ const nav = [
 const isActive = (to) => route.path === to;
 
 const logout = () => {
-  // después: borrar token + redirect
+  logoutService(); // borra token
   router.push("/login");
 };
 </script>
