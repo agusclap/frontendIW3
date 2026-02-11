@@ -19,6 +19,8 @@ Estructura del mensaje: Se envía un valor numérico Double (temperatura) cada v
   - GET /orden → listado. GET /orden/by-number/{numeroOrden} → detalle (el frontend usa este para evitar 403; no existe GET /orden/{id} en el controlador).
   - GET /orden/by-number/{numeroOrden}/historial-carga → historial de datos de carga para el gráfico "Temperatura durante la carga". Respuesta: array JSON de objetos con al menos temperatura y fecha/hora, ej. [{ "fechaHora": "2026-02-08T17:05:00", "temperatura": 1050, "masa": 10000 }, ...]. El frontend ordena por tiempo y dibuja temperatura vs tiempo. Si no existe (404), el gráfico muestra solo el punto actual.
 Productos: /api/v1/products
+  - PUT /products: body JSON con { id, nombre, descripcion, temperatura_umbral }. El frontend envía siempre id numérico; si el backend responde "Producto id =0", revisar que el @RequestBody Producto reciba correctamente el campo "id" (p. ej. log del body entrante).
+  - DELETE /products/{id}: eliminar por id.
 Clientes: /api/v1/clientes
 Camiones: /api/v1/camiones
 Choferes: /api/v1/choferes

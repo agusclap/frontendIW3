@@ -5,6 +5,7 @@ import OrdersView from "../views/OrdersView.vue";
 import OrderDetailView from "../views/OrderDetailView.vue";
 import ProductsView from "../views/ProductsView.vue";
 import UsersView from "../views/UsersView.vue";
+import AlarmsView from "../views/AlarmsView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,7 +15,8 @@ const router = createRouter({
     { path: "/orders", component: OrdersView, meta: { title: "Órdenes", requiresAuth: true } },
     { path: "/orders/:id", component: OrderDetailView, meta: { title: "Detalle orden", requiresAuth: true } },
     { path: "/products", component: ProductsView, meta: { title: "Productos", requiresAuth: true } },
-    { path: "/users", component: UsersView, meta: { title: "Usuarios", requiresAuth: true } }
+    { path: "/users", component: UsersView, meta: { title: "Usuarios", requiresAuth: true } },
+    { path: "/alarms", component: AlarmsView, meta: { title: "Alarmas", requiresAuth: true } }
   ],
 });
 

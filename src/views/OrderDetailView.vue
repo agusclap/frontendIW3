@@ -134,13 +134,21 @@ function buildChartFromHistorial(items, fieldKey) {
   };
 }
 
-//  PASO 3 — Función para cargar alarmas
+function alarmTs(a) {
+  return a?.time_stamp ?? a?.timeStamp ?? a?.timestamp;
+}
+//  PASO 3 — Función para cargar alarmas (incluye órdenes finalizadas: filtrar por orden)
 const loadAlarms = async () => {
   try {
     const all = await AlarmsService.list();
-    alarms.value = all
-      .filter(a => a.orden?.numeroOrden == numeroOrden)
-      .sort((a, b) => new Date(b.timeStamp) - new Date(a.timeStamp));
+    const orderId = String(numeroOrden);
+    alarms.value = (all || [])
+      .filter((a) => {
+        const ord = a.orden;
+        const orderRef = ord?.numeroOrden ?? ord?.id ?? a.id_order ?? a.idOrder;
+        return orderRef != null && String(orderRef) === orderId;
+      })
+      .sort((a, b) => new Date(alarmTs(b) || 0).getTime() - new Date(alarmTs(a) || 0).getTime());
   } catch (e) {
     console.error("Error cargando alarmas", e);
   }
@@ -390,13 +398,18 @@ const pendingAlarm = computed(() =>
   alarms.value.find(a => a.estado === "PENDIENTE_REVISION")
 );
 
-//  PASO 6 — Función aceptar alarma
+const acceptAlarmError = ref("");
+//  PASO 6 — Función aceptar alarma (permite aceptar aunque la orden esté finalizada)
 const acceptAlarm = async () => {
   if (!pendingAlarm.value) return;
+  acceptAlarmError.value = "";
   try {
-    await AlarmsService.accept(pendingAlarm.value.id);
+    const alarmId = pendingAlarm.value.id;
+    await AlarmsService.accept(alarmId);
     await load();
   } catch (e) {
+    const d = e?.response?.data;
+    acceptAlarmError.value = (typeof d === "string" ? d : d?.message ?? d?.error) || e?.message || "Error al aceptar la alarma";
     console.error("Error aceptando alarma", e);
   }
 };
@@ -614,41 +627,62 @@ const fmt = (n, unit = "") =>
             </div>
           </div>
 
-          <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm">
-            <div class="border-b border-white/10 px-5 py-4">
-              <h2 class="text-sm font-semibold text-gray-200">Detalles de carga</h2>
-              <p class="text-xs text-gray-500 mt-0.5">
-                {{ isCargaTerminada ? "Historial completo de la carga" : "Últimos datos en tiempo real" }}
-              </p>
+          <!-- Card compacta: valores actuales en grid + detalles de carga -->
+          <div class="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm overflow-hidden max-w-4xl">
+            <div class="border-b border-white/10 px-4 py-3 flex items-center justify-between gap-4">
+              <div>
+                <h2 class="text-sm font-semibold text-gray-200">Detalles de carga</h2>
+                <p class="text-xs text-gray-500 mt-0.5">
+                  {{ isCargaTerminada ? "Historial completo" : "Últimos datos en tiempo real" }}
+                </p>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div class="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                  <p class="text-[10px] uppercase tracking-wider text-gray-500">Masa</p>
+                  <p class="text-sm font-mono font-semibold text-blue-300">{{ fmt(massKg, " kg") }}</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                  <p class="text-[10px] uppercase tracking-wider text-gray-500">Temp.</p>
+                  <p class="text-sm font-mono font-semibold text-blue-300">{{ fmt(temperature, " °C") }}</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                  <p class="text-[10px] uppercase tracking-wider text-gray-500">Densidad</p>
+                  <p class="text-sm font-mono font-semibold text-cyan-300">{{ fmt(density) }}</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                  <p class="text-[10px] uppercase tracking-wider text-gray-500">Caudal</p>
+                  <p class="text-sm font-mono font-semibold text-cyan-300">{{ fmt(flowKgh, " kg/h") }}</p>
+                </div>
+              </div>
             </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead class="bg-black/30 text-gray-400">
+            <div class="overflow-x-auto max-h-64">
+              <table class="w-full text-xs">
+                <thead class="bg-black/30 text-gray-400 sticky top-0">
                   <tr>
-                    <th class="px-5 py-3 text-left font-medium">Fecha / Hora</th>
-                    <th class="px-5 py-3 text-left font-medium">Temperatura (°C)</th>
-                    <th class="px-5 py-3 text-left font-medium">Densidad</th>
-                    <th class="px-5 py-3 text-left font-medium">Caudal (kg/h)</th>
-                    <th class="px-5 py-3 text-left font-medium">Masa (kg)</th>
+                    <th class="px-3 py-2 text-left font-medium">Fecha / Hora</th>
+                    <th class="px-3 py-2 text-left font-medium">Temp.</th>
+                    <th class="px-3 py-2 text-left font-medium">Dens.</th>
+                    <th class="px-3 py-2 text-left font-medium">Caudal</th>
+                    <th class="px-3 py-2 text-left font-medium">Masa</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr
                     v-for="(row, idx) in detallesTableRows"
                     :key="idx"
-                    class="border-t border-white/10 text-gray-300 hover:bg-white/5"
+                    class="border-t border-white/5 text-gray-300 hover:bg-white/5 font-mono"
                   >
-                    <td class="px-5 py-3 font-mono text-xs">
+                    <td class="px-3 py-2 text-[11px]">
                       {{ row.fechaHora ? (row.fechaHora.includes('T') ? new Date(row.fechaHora).toLocaleString() : row.fechaHora) : "—" }}
                     </td>
-                    <td class="px-5 py-3">{{ fmt(row.temperatura, " °C") }}</td>
-                    <td class="px-5 py-3">{{ fmt(row.densidad) }}</td>
-                    <td class="px-5 py-3">{{ fmt(row.caudal, " kg/h") }}</td>
-                    <td class="px-5 py-3">{{ fmt(row.masa, " kg") }}</td>
+                    <td class="px-3 py-2">{{ fmt(row.temperatura, " °C") }}</td>
+                    <td class="px-3 py-2">{{ fmt(row.densidad) }}</td>
+                    <td class="px-3 py-2">{{ fmt(row.caudal, " kg/h") }}</td>
+                    <td class="px-3 py-2">{{ fmt(row.masa, " kg") }}</td>
                   </tr>
                   <tr v-if="detallesTableRows.length === 0">
-                    <td colspan="5" class="px-5 py-8 text-center text-gray-500">
-                      Aún no hay datos de carga. Los detalles aparecerán en tiempo real o al finalizar la orden.
+                    <td colspan="5" class="px-3 py-6 text-center text-gray-500 text-xs">
+                      Sin datos de carga aún.
                     </td>
                   </tr>
                 </tbody>
@@ -671,6 +705,7 @@ const fmt = (n, unit = "") =>
                   Aceptar alarma activa
                 </button>
               </div>
+              <p v-if="acceptAlarmError" class="mt-2 text-xs text-red-300">{{ acceptAlarmError }}</p>
             </div>
             
             <div class="overflow-x-auto">
@@ -690,7 +725,7 @@ const fmt = (n, unit = "") =>
                     :class="alarm.estado === 'PENDIENTE_REVISION' ? 'bg-red-500/10 text-red-200' : 'text-gray-300'"
                   >
                     <td class="px-5 py-3 font-mono text-xs">
-                      {{ new Date(alarm.timeStamp).toLocaleString() }}
+                      {{ alarmTs(alarm) ? new Date(alarmTs(alarm)).toLocaleString() : "—" }}
                     </td>
                     <td class="px-5 py-3 font-semibold">{{ alarm.temperatura }} °C</td>
                     <td class="px-5 py-3">

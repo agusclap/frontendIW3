@@ -9,6 +9,7 @@ const nav = [
   { name: "Dashboard", to: "/", icon: "🏠" },
   { name: "Productos", to: "/products", icon: "📦" },
   { name: "Órdenes", to: "/orders", icon: "🧾" },
+  { name: "Alarmas", to: "/alarms", icon: "🔔" },
   { name: "Usuarios", to: "/users", icon: "👤" },
 ];
 
