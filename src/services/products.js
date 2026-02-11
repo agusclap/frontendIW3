@@ -33,7 +33,7 @@ export const ProductsService = {
       temperatura_umbral: product?.temperatura_umbral ?? null,
     };
     await api.put(`/products/${numId}`, body);
-  },
+},
 
   async remove(id) {
     await api.delete(`/products/${id}`);

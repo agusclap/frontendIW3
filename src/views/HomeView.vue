@@ -165,13 +165,17 @@ const cards = computed(() => [
         <h1 class="text-3xl font-extrabold tracking-tight text-white">Panel de Control</h1>
         <p class="text-gray-400 mt-1">Gestión de logística y carga de combustible</p>
       </div>
+      
 
+      <!--
       <button
         @click="showModal = true"
         class="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-6 py-3 font-bold text-white transition-all shadow-lg active:scale-95"
       >
         <span>＋ Nueva Orden</span>
       </button>
+      -->
+      
     </div>
 
     <div v-if="error" class="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">

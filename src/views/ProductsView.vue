@@ -35,13 +35,10 @@ const filtered = computed(() =>
 );
 
 function openEdit(p) {
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/e8eacad5-e1b3-4f2d-a3a7-5d2583984d88',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductsView.vue:openEdit',message:'openEdit called',data:{pId:p?.id,pIdType:typeof p?.id,keys: p ? Object.keys(p) : []},timestamp:Date.now(),hypothesisId:'H1-H4'})}).catch(()=>{});
-  // #endregion
   editingProduct.value = p;
   const numId = p.id != null && p.id !== "" ? Number(p.id) : p.id;
   form.value = {
-    productId: numId,
+    id: numId, // CAMBIAR 'productId' por 'id' para que Java lo reconozca
     nombre: p.nombre ?? "",
     descripcion: p.descripcion ?? "",
     temperatura_umbral: p.temperatura_umbral != null ? Number(p.temperatura_umbral) : null,
@@ -153,7 +150,10 @@ const removeProduct = async (id) => {
             <th class="text-left px-5 py-4">Nombre</th>
             <th class="text-left px-5 py-4">Descripción</th>
             <th class="text-left px-5 py-4">Temp. Umbral</th>
+            <!--
             <th class="text-right px-5 py-4">Acciones</th>
+            -->
+            
           </tr>
         </thead>
         <tbody>
@@ -166,6 +166,8 @@ const removeProduct = async (id) => {
             <td class="px-5 py-4 text-gray-300">{{ p.descripcion || "—" }}</td>
             <td class="px-5 py-4 text-gray-300 font-mono">{{ p.temperatura_umbral ?? "—" }}</td>
             <td class="px-5 py-4 text-right">
+             
+             <!--
               <button
                 type="button"
                 @click="openEdit(p)"
@@ -180,6 +182,10 @@ const removeProduct = async (id) => {
               >
                 Eliminar
               </button>
+             
+             
+             -->
+              
             </td>
           </tr>
 

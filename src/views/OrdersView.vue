@@ -121,15 +121,16 @@ const fmt = (n) =>
               v-model="statusFilter"
               class="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             >
-              <option value="ALL">Todos los estados</option>
-              <option
+              <option value="ALL" class="bg-gray-900 text-white">Todos los estados</option>
+                <option
                 v-for="s in statuses.filter((x) => x !== 'ALL')"
                 :key="s"
                 :value="s"
+                class="bg-gray-900 text-white" 
               >
-                {{ statusMeta(s).label }}
-              </option>
-            </select>
+            {{ statusMeta(s).label }}
+            </option>
+          </select>
 
             <input
               v-model="q"
